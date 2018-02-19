@@ -1,0 +1,466 @@
+---
+title: "DS1 Exam"
+author: "Rajendran Seetharaman"
+date: "December 10, 2017"
+output: pdf_document
+---
+
+Problem 1: 2016 Election Results Data (25pt)
+
+Use the following datasets to analyze the US 2016 election results (available on canvas in files/data) by county.
+1. US_County_Level_Presidential_Results_08-16.csv.bz2
+2. county_data.csv.bz2
+3. there is also an explanation file for the county data county_data_variables.pdf.
+Note: the datasets can be merged by FIPS (Federal Information Processing Standards) codes. There are 3-digit county FIPS codes and 2-digit state FIPS codeds, some data use 5 digit FIPS instead: 2 digits for the state followed by 3 digits for the county.
+
+1. Tidy the data. Merge these datasets, retain only more interesting variables, compute additional variables you find interesting, and consider giving these more descriptive names. Explain briefly what did you do.
+
+Ans. 
+
+I took the following steps to tidy the data and computed the following additional useful variables-
+
+I only selected the data/variables pertaining to the year 2016 as we are looking at the election results for that particular and how they might have been influenced by factors like the population in a particular county during that year.
+I selected fips code, county, and votes information from results dataset. I converted the democrat,GOP, other columns to rows by transforming the vote count columns for each party to two columns- party name, vote count for party. I also extracted state and country fips codes from data to facilitate joining with the county data. I retained the region, division, state, county, population, and migration variables from county dataset. I finally joined the 2 datasets on county and state fips codes and computed percent votes for each party in each county as this would be extremely useful for the subsequent questions. I also gave the variables more descriptive names.
+
+In the results dataset, the variables I retained were the fips codes, county and votes information as these are all important as well as interesting variables. The vote counts are the main outcome of the election. In the county dataset, I retained the region, state, county information. I also retained the variables pertaining to population numbers and changes, and migration numbers, as these seem to be interesting and feel that they might have some relationship with election outcome i.e vote counts. 
+
+```{r}
+library(readr)
+library(tidyverse)
+#read the datasets
+county_pres_results <- 
+  read_csv("C:/Users/admin/Downloads/US_County_Level_Presidential_Results_08-16.csv.bz2")
+county_data <- read_csv("C:/Users/admin/Downloads/county_data.csv.bz2")
+#select fips code, county, and votes information from results dataset
+#convert cols to rows by transforming cols for each party to cols- party name, votes
+#extract state and country fips codes from data
+county_pres_results <- county_pres_results %>%
+  select(fips_code,county,democrats=dem_2016,republicans=gop_2016,
+  others=oth_2016,total_votes=total_2016) %>% 
+  gather(party,votes,3:5) %>% arrange(fips_code) %>%
+  mutate(state_fips=as.integer(substr(fips_code,1,2)),
+  county_fips=as.integer(substr(fips_code,3,5)))
+
+#select region, division, state, county, population, and migration variables from county dataset
+county_data <- county_data %>% select(region=REGION,division=DIVISION,state_fips=STATE,
+ county_fips=COUNTY,state_name=STNAME,county_name=CTYNAME,
+ resident_population_estimate=POPESTIMATE2016,
+ resident_population_change=NPOPCHG_2016,
+ international_migration=INTERNATIONALMIG2016,
+ domestic_migration=DOMESTICMIG2016,net_migration=NETMIG2016,
+ international_migration_rate=RINTERNATIONALMIG2016,
+ domestic_migration_rate=RDOMESTICMIG2016,net_migration_rate=RNETMIG2016)
+
+#join the 2 datasets on county and state fips codes
+#compute percent votes for each party in each county
+voting_data <- merge(x=county_pres_results,y=county_data,
+  by.x=c("state_fips","county_fips"),by.y=c("state_fips","county_fips")) %>%
+  arrange(fips_code,party) %>% mutate(vote_percent=(votes*100)/total_votes)
+#clean county variable by removing extraneous information
+voting_data <- voting_data %>% mutate(county_name=
+  substr(county,1,regexpr(" ",county)-1))
+
+```
+
+2. describe the data and the more interesting variables. Which variables' relationship to the election outcomes you might want to analyze?
+
+Ans. 
+
+The first dataset (county data) contains the following data about each county in the US for different years - population estimate, number of births/deaths, change in population, natural increase in population; net migrations (both domestic and international), group quarters population estimates, birth/death rates, natural increase rates, and net migration rates. 
+
+The second dataset (results data) contains the results from from the last 3 presidential elections. It contains information pertaining to the vote counts secured by parties i.e democratic, republican, and other in each of the counties.
+
+I feel that the variables like county, region, state, vote counts for the year 2016, the county population,population migration numbers and rates, for the year 2016 would be helpful to analyze the relationship with the outcomes of the elections for 2016.
+
+```{r}
+str(voting_data)
+summary(voting_data)
+```
+
+3. plot the percentage of votes for democrats versus the county population. What do you conclude?
+Use the appropriates labels/scales/colors to make the point clear.
+
+Ans. I am plotting the percentage of votes for democrats for each of the 4 geographic regions across the US to see if the results I get are consistent across all the 4 regions. I am using a logarithmic scale for the population estimate.
+
+Looking at each of the 4 graphs, I see that across all the regions, an increase in the county's population is associated with an increase in percent vote for democrats in that county. I see a particularly strong trend for the midwest region. The trend might not necessarily be linear. 
+```{r}
+regions <- c("Northeast", "Midwest", "South", "West")
+for(i in 1:4)
+{
+  #plot scatterplot for each of the 4 regions in the US
+ print(ggplot(data=voting_data %>% 
+  filter(party=="democrats" & region==i),aes(x=resident_population_estimate,
+  y=vote_percent))+geom_point()+scale_x_log10()+geom_smooth(method='lm')+
+  labs(title=paste("Democrat vote percentage v/s population for region-",
+  regions[i]),x="Resident population estimate (log scale)",
+  y="Percent of votes for Democrats"))
+}
+
+```
+4. Create a map of percentage of votes for democrats. Do your best to reflect the continuous percentage of votes, and the dierent population sizes across counties and keep county boundaries as well legible as you can. Mark state boundaries on the map.
+Explain what did you do, and what worked well, what did not work well.
+Hint: there are many ways to map data in R. You may consider function ggplot::map_data that
+includes various maps, including US administrative boundaries. However, map_data counties do not
+include FIPS code. You may rely on merging data by state name and county name, given you a)
+convert your names to lower case, and b) remove the word " county" from the end of the names.
+This works for most of the counties, except for Lousiana where counties are called parish.
+
+Ans. I first retrived state and county data for the US using the map_data function. It helped my get the latitudes and longitudes for the states and counties respectively. I then converted the state and county name first letters to lowercase in the voting data to help me join with the US county data retrived earlier using geom map.
+
+I then merged the datasets using the name of the counties and filtered the data for democrats.
+I used the Rcolorbrewer to plot points on the map for each each county with red representing low democrat votes, yellow representing moderate percent of democrat votes and blue representing high percent democrat votes on a continious scale. I creates state outlines using the geom_polygon function.
+
+What worked well for me was that I was able to effectively show the percent democrat votes as points on the US Map with each state boundary clearly demarcated. What did not work well for me was representing county boundaries and the population estimates in the same plot. I decided to do away with county boundary lines as there are too many counties and the plot was getting too overcrowded with the county boundaries. I also decided not to represent the population for each county on the map (as the size of the points) as it was not appealing visually. 
+
+reference: https://uchicagoconsulting.wordpress.com/2011/04/18/how-to-draw-good-looking-maps-in-r/
+
+```{r}
+#get state geographic data
+united_states1 <- map_data("state")
+#get county geographic data
+united_states <- map_data("county")
+#convert county names to lowercase
+substr(voting_data$county_name, 1, 1) <- 
+  tolower(substr(voting_data$county_name, 1, 1))
+substr(voting_data$state_name, 1, 1) <- 
+  tolower(substr(voting_data$state_name, 1, 1))
+
+#merge datasets using county name (subregion) as key
+#filter data for democrats
+united_states_merged <- 
+  merge(x=united_states,y=voting_data %>% 
+  filter(party=="democrats"),by.x=c("subregion"),
+  by.y=c("county_name"),all.x = TRUE)
+
+```
+
+```{r}
+#using the rcolorbrewer package
+library(RColorBrewer)
+cols <- rev(brewer.pal(10, 'RdYlBu'))
+#plot the map with percent votes as points on map
+ggplot(data = united_states_merged) +
+  geom_point(aes(x = long, y = lat, col=vote_percent)) + 
+  coord_fixed(1.3)+scale_colour_gradientn(colours=rev(cols))+
+  geom_polygon(data=united_states1,aes(x=long,y=lat,group=group),
+  fill=NA,color="black")
+
+```
+
+5. Create one more visualization regarding the election results on your choice. The plot should be informative and clear. Use appropriate colors/labels/explanations.
+
+Ans. I am plotting the percentage of votes for GOP (Republicans) for each of the 4 geographic regions across the US to see if the results I get are consistent across all the 4 regions. I am using a logarithmic scale for the population estimate.
+
+Looking at each of the 4 graphs, I see that across all the regions, an increase in the county's population is associated with an decrease in percent vote for GOP in that county. I see a particularly strong negative trend for the midwest region.  
+
+The above result might lead us to believe that states with larger populations were the ones which voted largely in favour of democrats, while states with relatively smaller populations voted largely in favour of republicans.
+
+```{r}
+regions <- c("Northeast", "Midwest", "South", "West")
+for(i in 1:4)
+{
+  #plot scatterplot for each of the 4 regions in the US
+ print(ggplot(data=voting_data %>% 
+  filter(party=="republicans" & region==i),
+  aes(x=resident_population_estimate,y=vote_percent))+
+  geom_point()+scale_x_log10()+geom_smooth(method='lm')+
+  labs(title=paste("GOP vote percentage v/s population for region-",
+  regions[i]),x="Resident population estimate (log scale)",
+  y="Percent of votes for GOP"))
+}
+
+```
+
+
+Problem 2: 2016 Election Model (25pt)
+
+Use the data from the previous problem. Your task is to estimate the probability that a county voted for democrats in 2016 elections (ie the probability that democrats received more votes than GOP).
+Note: you may want to include more/different variables than what you did in the previous problem.
+
+1. List the variables you consider relevant, and explain why do you think these may matter for the election results.
+
+Ans. 
+
+I think that that the variables which would be relevant to predict the probability that a county voted for democrats in the 2016 elections are the resident population estimate, the resident population change, the domestic and total migration numbers, and the total number of votes placed in a county. 
+
+Looking at the results of the previous problem, the data seems to suggest that a huge proportion of votes for democrats came from counties which had large populations. Hence, I feel that resident population, as well as resident population change could be a good predictor to estimate the probability of a county voting for democrats in the election. I also feel that migration patterns into a county, especially domestic migration (Migration of people eligible) to vote could influence the probability of democrats winning as that changes the demographic of voters in a county. Total votes cast in a county are also a factor which could indicate the probability of democrats winning. We earlier saw that population seemed to have a positive correlation with democrat vote percent. I would like to explore the relationship of democrats winning with votes cast as not everyone in a county votes in an election.
+```{r}
+library(readr)
+library(tidyverse)
+#read the datasets
+county_pres_results <- 
+  read_csv("C:/Users/admin/Downloads/US_County_Level_Presidential_Results_08-16.csv.bz2")
+county_data <- read_csv("C:/Users/admin/Downloads/county_data.csv.bz2")
+#select fips code, county, and votes information from results dataset
+#extract state and country fips codes from data
+county_pres_results1 <- county_pres_results %>%
+  select(fips_code,county,democrats=dem_2016,republicans=gop_2016,
+  others=oth_2016,total_votes=total_2016)  %>% arrange(fips_code) %>%  
+  mutate(state_fips=as.integer(substr(fips_code,1,2)),
+  county_fips=as.integer(substr(fips_code,3,5)))
+
+#select region, division, state, county, population, and migration variables from county dataset
+county_data1 <- county_data %>% select(region=REGION,division=DIVISION,
+ state_fips=STATE,county_fips=COUNTY,state_name=STNAME,
+ county_name=CTYNAME,resident_population_estimate=POPESTIMATE2016,
+ resident_population_change=NPOPCHG_2016,
+ international_migration=INTERNATIONALMIG2016,
+ domestic_migration=DOMESTICMIG2016,net_migration=NETMIG2016,
+ international_migration_rate=RINTERNATIONALMIG2016,
+ domestic_migration_rate=RDOMESTICMIG2016,
+ net_migration_rate=RNETMIG2016)
+
+#join the 2 datasets on county and state fips codes
+#compute percent votes for each party in each county
+voting_data1 <- merge(x=county_pres_results1,y=county_data1,
+ by.x=c("state_fips","county_fips"),by.y=c("state_fips","county_fips")) %>% 
+ arrange(fips_code) 
+#clean county variable by removing extraneous information
+voting_data1 <- voting_data1 %>% 
+  mutate(county_name=substr(county,1,regexpr(" ",county)-1))
+voting_data1 <- voting_data1 %>% 
+  mutate(winner=as.factor(as.integer(democrats>republicans)))
+
+```
+
+2. Estimate a logistic regression model where you explain the probability of voting democratic as a function of the variables you considered relevant. Show the results (summary).
+
+```{r}
+#create logistic model
+m <-glm(winner~resident_population_estimate+
+  resident_population_change+net_migration+domestic_migration+
+  total_votes, data=voting_data1, family=binomial(link = "logit"))
+summary(m)
+```
+
+3. Experiment with a few different specifications and report the best one you got. Explain what did you do.
+Hint: we did not talk about choosing between different logistic regression models. You may use a
+pseudo-R2 value in a similar fashion as you use R2 for linear models. For instance, pscl::pR2 will provide a number of different pseudo-R2 values for estimated glm models, you may pick McFadden's version.
+
+Ans.
+
+pR2 function from the pscl library provides a pseudo-R2 values for estimated logistic regression models, I  would be using McFadden's version for tesing the goodness of fit. The pseudo R2 value for the first model (m) came out to be 0.20068, indicating that the model is not a very good fit for the observed data.
+
+In the second model (m2), I replaced the migration numbers with rates, and added the international migration rate as well to check if adding migration rates instead of numbers might improve the goodness of fit. I also felt that taking the log value of resident population estimate might improve the model. The goodness of fit improved for the model with the pseudo R2 value going up to 0.2303363, which indicates a better fit to the observed data. 
+
+For my last model (m3), I used the migration numbers instead of the rates and removed international migration, as I felt that international immigrants generally do not have voting rights, and an influx/outflow of international migrants to a county might not impact the probability of democrats winning there as much as an influx or ouflow of domestic migrants might. I also tried to experiment by only keeping the resident population change and not the resident population number as one of my predictors. This lowered my pseudo R squared value to be even lower than my first value. The R2 value for this model came out as 0.1990827. This model seems to have the worst fit to the data.
+
+Therefore my best fit model in this case was m2 with a pseudo R2 value of 0.2303363.
+
+```{r}
+library(pscl)
+#create logistic model 2
+m2 <-glm(winner~log(resident_population_estimate)+
+  resident_population_change+net_migration_rate+
+  domestic_migration_rate+international_migration_rate+
+  total_votes, data=voting_data1, family=binomial(link = "logit"))
+summary(m2)
+#create logistic model 3
+m3 <-glm(winner~resident_population_change+net_migration+
+ domestic_migration+total_votes, data=voting_data1, 
+ family=binomial(link = "logit"))
+summary(m3)
+#estimate pseudo R2 for models
+pR2(m)[4]
+pR2(m2)[4]
+pR2(m3)[4]
+```
+
+4. Explain the meaning of statistical significance. What does it mean that an estimated coefficient is statistically significant (at 5% confidence level)?
+
+Ans. 
+
+Statistical significance of a coefficient in an an estimated model basically tests if the predicted relationship in the model betweenthe predictor and response variables is not due to random chance. 
+
+Statistical significance of a variable in a model is indicated by its p-value. The p-value for each term is the result of a hypothesis test for the model which tests if the null hypothesis that the coefficient is equal to zero. A low p-value (< 0.05) indicates that you can reject the null hypothesis that the relationship we see between the predictor and outcome is due to random chance.
+
+A larger p-value suggests that the data does not present enough evidence to reject the null hypothesis that the relationship seen between the predictor and outcome might be due to random chance.
+
+For 95% confidence, a p-value of less than 0.05 for a variable indicates that the relationship described between it and the response variable in the model might not be due to random chance.  
+
+5. Indicate which results are statistically significant in your preferred model.
+
+Ans. In my prefered model, the results which are statistically significant are the following as their p-values are lower than the critical p value of 0.05.
+
+log(resident_population_estimate) with a p value of- 8.00e-06
+
+resident_population_change with p value of - 0.000724
+
+total_votes with p value of - 5.71e-07
+
+Net migration rate, domestic migration rate, and internationa migration rate do not seen statistically significant as their p values are not lower than 0.05.
+
+6. Interpret the results. Provide correct interpretable explanations about what the most important effect are and what do the particular numeric results mean.
+Hint: you may use either odds ratios or marginal effects.
+
+Ans. 
+
+The following are the interpretations of the model coefficients:
+
+For a unit increase in log(resident_population_estimate), the log odds of democrats winning in a county are likely to change by 2.942e-01. (Log odds likely to increase)
+
+For a unit increase in resident_population_change, the log odds of democrats winning in a county are likely to change by -8.222e-05. (Log odds likely to decrease)
+
+For a unit increase in resident_population_change, the log odds of democrats winning in a county are likely to change by 5.615e-06. (Log odds likely to increase)
+
+
+Problem 3: Simulate the Effect of Additional Random Coefficients (25pt)
+
+Here your task is to simulate the logit coeffcients of irrelevant input variables. You may either pick your favorite model from above, or use a different specification.
+
+1. Choose a distribution. Poisson is fine, but you may pick something else as well.
+
+(a) Create a vector of random numbers, exactly as long as many observations you have in your
+data.
+
+```{r}
+#create vector of random numbers from poisson distribution
+rand_nos <- rpois(nrow(voting_data1),lambda=100)
+
+```
+
+(b) Estimate the logistic regression model using your former specification, but adding the random
+number as an additional explanatory variable.
+
+```{r}
+#create glm with random number as explanatory variable
+m4 <-glm(winner~log(resident_population_estimate)+
+  resident_population_change+net_migration_rate+
+  domestic_migration_rate+international_migration_rate+total_votes+
+  rand_nos, data=voting_data1, family=binomial(link = "logit"))
+summary(m4)
+
+```
+
+(c) store the coefficient for the random variable.
+Hint: function coef gives you the estimated coefficients of the model. It is a named vector, you
+can extract the coefficient of interest as coef(m)["varname"] where m is the estimated model
+and "varname" is the name of the variable of interest.
+
+```{r}
+#Extract coefficient of random variable
+rand_coeff <- coef(m4)['rand_nos']
+print(rand_coeff)
+```
+
+(d) repeat these steps a large number R > 1000 times. Now you have R estimates of the coefficent
+for pure carbage features.
+```{r}
+start_time <- Sys.time()
+R <- 2000
+coefficients_list <- c()
+#repeat the estimation of coefficients step R times for different sets of poisson random variable
+for(i in 1:R)
+{
+  rand_nos1 <- rpois(nrow(voting_data1),lambda=100)
+  m5 <-glm(winner~log(resident_population_estimate)+
+    resident_population_change+net_migration_rate+
+    domestic_migration_rate+international_migration_rate+
+    total_votes+rand_nos1, data=voting_data1, 
+    family=binomial(link = "logit"))
+  rand_coeff1 <- coef(m5)['rand_nos1']
+  coefficients_list <- append(coefficients_list,rand_coeff1)
+}
+
+end_time <- Sys.time()
+#compute time taken for sequential calculations
+print(end_time-start_time)
+```
+
+2. What are the (sample) mean and (sample) standard deviation of the estimated coefficients?
+
+Ans.
+The sample mean of the estimated coefficients is -0.0001977636
+The sample standard deviation of the estimated coefficients is 0.005710202
+
+```{r}
+#compute mean and sd of coefficients
+coef_mean <- mean(coefficients_list)
+coef_sd <- sd(coefficients_list)
+print(coef_mean)
+print(coef_sd)
+```
+3. Find the 95% confidence interval of the coefficient based on your simulations.
+
+Ans. The 95% confidence interval of the coefficents is (-0.01115788 ,0.01092059)
+
+```{r}
+#compute 95% confidence interval of coefficients
+quantile(coefficients_list,0.025)
+quantile(coefficients_list,0.975)
+```
+4. Plot the distribution of the estimates (histogram, or another density plot).
+
+```{r}
+#plot histogram of coefficients
+hist(coefficients_list)
+```
+5. Assume the estimates are randomly distributed with mean and standard deviation as you found
+above. What are the theoretical 95% confidence intervals for the results?
+
+Ans. The 95% theoretical confidence interval of the coefficents would be (-0.01138976 ,0.01099423) as they would be distributed around the mean with 95% confidence interval of: mean +/- (1.96 * SD) 
+
+```{r}
+#compute theoretical 95% confidence intervals
+zscore <- 1.96
+upper <- coef_mean + zscore*coef_sd
+lower <- coef_mean - zscore*coef_sd
+print(lower)
+print(upper)
+```
+6. Extra credit (2pt): run the simulations in parallel. Report how much faster did it go compared to sequential processing.
+
+Ans. 
+Sequential processing took approximately 35.71104 secs. Parallel processing took about 24.74642 secs. Parallel processing had a performance improvement of about 11 secs.
+
+Reference: https://www.r-bloggers.com/5-ways-to-measure-running-time-of-r-code/
+
+```{r}
+#use doparallel and foreach libraries
+library(doParallel)
+library(foreach)
+registerDoParallel(cores=20)
+start_time1 <- Sys.time()
+R <- 2000
+#repeat the estimation of coefficients step R times for different sets of poisson random variable
+coeffval <-foreach(i <- 1:R, .combine=append)%dopar%
+  {
+    rand_nos2 <- rpois(nrow(voting_data1),lambda=100)
+  m6 <-glm(winner~log(resident_population_estimate)+
+   resident_population_change+net_migration_rate+
+   domestic_migration_rate+international_migration_rate+
+   total_votes+rand_nos2, data=voting_data1, 
+   family=binomial(link = "logit"))
+  rand_coeff1 <- coef(m6)['rand_nos2']
+    }
+
+end_time1 <- Sys.time()
+#compute time taken  for parallel execution
+print(end_time1-start_time1)
+```
+Problem 4:
+
+1(a-b) and 2(a-d) Solved on paper and attached to this exam 
+
+2(e)
+
+```{r}
+library(maxLik)
+
+cointoss <- function(p) {21*log(p)+ 10*log(1-p)}
+maxLik::maxLik(cointoss,start=0.1)
+plot(cointoss)
+abline(v=0.677)
+
+```
+
+
+
+Statement of Compliance
+
+Please copy and sign the following statement. You may do it on paper (and include the image file), or add the following text with your name and date in the rmarkdown document.
+
+I affirm that I have had no conversation regarding this exam with any persons other than the instructor or the teaching assistant. Further, I certify that the attached work represents my own thinking. Any information, concepts, or words that originate from other sources are cited in accordance with University of Washington guidelines as published in the Academic Code (available on the course website). I am aware of the serious consequences that result from improper discussions with others or from the improper citation of work that is not my own.
+
+Rajendran Seetharaman
+11th December, 2017
